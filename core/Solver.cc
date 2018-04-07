@@ -738,6 +738,7 @@ static double luby(double y, int x){
 // NOTE: assumptions passed in member-variable 'assumptions'.
 lbool Solver::solve_()
 {
+	//test solve github
     model.clear();
     conflict.clear();
     if (!ok) return l_False;
