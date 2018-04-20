@@ -31,7 +31,9 @@ namespace Minisat {
 
 template<class Comp>
 class Heap {
+	//lt是建最小堆的比较方法
     Comp     lt;       // The heap is a minimum-heap with respect to this comparator
+    //heap视作递增数组
     vec<int> heap;     // Heap of integers
     vec<int> indices;  // Each integers position (index) in the Heap
 
@@ -106,7 +108,7 @@ class Heap {
         percolateUp(indices[n]); 
     }
 
-
+//效果是把heap下标最小的元素pop了，heap按下标升序,若树根是heap[0]，则有树根最小，是小顶堆
     int  removeMin()
     {
         int x            = heap[0];

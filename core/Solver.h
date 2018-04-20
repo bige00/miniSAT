@@ -17,7 +17,32 @@ namespace Minisat
 
 class Solver {
 public:
-
+	void printCA(){
+		printf("**************************printCA Start*************************\n");
+		for(int i=0;i<clauses.size();i++){
+			printf("cref=%3d ",clauses[i]);
+		for(int j=1;j<=ca[clauses[i]].size();j++) {
+			printf("%5d ",ca[clauses[i]+j]);
+		}
+		printf("\n");
+		}
+		printf("**************************printCA END*************************\n");
+	}
+	void printAssign(){
+		printf("**************************printAssignS*************************\n");
+		for(int i=0;i<assigns.size();i++){
+			printf("%5d",i+1);
+		}
+		printf("\n");
+		for(int i=0;i<assigns.size();i++){
+			printf("%5d",assigns[i]);
+		}
+		printf("\n");
+		printf("**************************Assigns END*************************\n");
+	}
+	int* printPS(vec<Lit>& ps,const int size);
+	int* printWS(int size);
+	void printWSI(int ind);
     // Constructor/Destructor:
     //
     Solver();
@@ -128,8 +153,9 @@ protected:
     static inline VarData mkVarData(CRef cr, int l){ VarData d = {cr, l}; return d; }
 
     struct Watcher {
-        CRef cref;//here ,CRef is a uint32
-        Lit  blocker;
+        CRef cref;//*cref presents the first memory address of a clause
+        //which has a lit who built this watcher
+        Lit  blocker;//*blocker is the neighbor of cref,one of the two lits in a clause's head
         Watcher(CRef cr, Lit p) : cref(cr), blocker(p) {}
         bool operator==(const Watcher& w) const { return cref == w.cref; }
         bool operator!=(const Watcher& w) const { return cref != w.cref; }
@@ -260,7 +286,9 @@ inline CRef Solver::reason(Var x) const { return vardata[x].reason; }
 inline int  Solver::level (Var x) const { return vardata[x].level; }
 
 inline void Solver::insertVarOrder(Var x) {
-    if (!order_heap.inHeap(x) && decision[x]) order_heap.insert(x); }
+    if (!order_heap.inHeap(x) && decision[x])
+    	order_heap.insert(x);
+}
 
 inline void Solver::varDecayActivity() { var_inc *= (1 / var_decay); }
 inline void Solver::varBumpActivity(Var v) { varBumpActivity(v, var_inc); }
@@ -269,11 +297,13 @@ inline void Solver::varBumpActivity(Var v, double inc) {
         // Rescale:
         for (int i = 0; i < nVars(); i++)
             activity[i] *= 1e-100;
-        var_inc *= 1e-100; }
+        var_inc *= 1e-100;
+    }
 
     // Update order_heap with respect to new activity:
     if (order_heap.inHeap(v))
-        order_heap.decrease(v); }
+        order_heap.decrease(v);
+}
 
 inline void Solver::claDecayActivity() { cla_inc *= (1 / clause_decay); }
 inline void Solver::claBumpActivity (Clause& c) {
@@ -281,12 +311,14 @@ inline void Solver::claBumpActivity (Clause& c) {
             // Rescale:
             for (int i = 0; i < learnts.size(); i++)
                 ca[learnts[i]].activity() *= 1e-20;
-            cla_inc *= 1e-20; } }
-
+            cla_inc *= 1e-20; }
+}
+//重新构建CA的cref
 inline void Solver::checkGarbage(void){ return checkGarbage(garbage_frac); }
 inline void Solver::checkGarbage(double gf){
     if (ca.wasted() > ca.size() * gf)
-        garbageCollect(); }
+        garbageCollect();
+}
 
 // NOTE: enqueue does not set the ok flag! (only public methods do)
 inline bool     Solver::enqueue         (Lit p, CRef from)      { return value(p) != l_Undef ? value(p) != l_False : (uncheckedEnqueue(p, from), true); }
@@ -348,7 +380,7 @@ inline void     Solver::toDimacs     (const char* file, Lit p, Lit q, Lit r){ ve
 //=================================================================================================
 // Debug etc:
 
-
+//search
 //=================================================================================================
 // Solver -- the main class:
 

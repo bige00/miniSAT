@@ -67,7 +67,7 @@ static void parse_DIMACS_main(B& in, Solver& S)
 			S.addClause_(lits);
 		}
 	}
-	int tes = S.nVars();
+	//int tes = S.nVars();
 	if (S.nVars() != vars)
 		fprintf(stderr,
 				"WARNING! DIMACS header mismatch: wrong number of variables.\n");

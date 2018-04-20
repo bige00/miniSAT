@@ -72,6 +72,7 @@ const Lit lit_Error = { -1 };  // }
 
 class lbool
 {
+//public://zyj added this public:
     uint8_t value;
 
 public:
@@ -225,8 +226,12 @@ class ClauseAllocator : public RegionAllocator<uint32_t>
     {
         Clause& c = operator[](cr);
         
-        if (c.reloced()) { cr = c.relocation(); return; }
-        
+        //若标记要更改，则在此更改cref
+        if (c.reloced()) {
+        	cr = c.relocation();//此处cr引用传入的cref，用于重定cref
+        	return;
+        }
+        //否则在新的CA中获得新的cref
         cr = to.alloc(c, c.learnt());
         c.relocate(cr);
         

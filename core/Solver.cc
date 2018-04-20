@@ -8,7 +8,9 @@ Copyright (c) 2007-2010, Niklas Sorensson
 
 #include "../mtl/Sort.h"
 #include "Solver.h"
-
+#include <iostream>
+#include "../mtl/Vec.h"
+#include<stdio.h>
 using namespace Minisat;
 
 //=================================================================================================
@@ -84,7 +86,58 @@ Solver::Solver() :
   , asynch_interrupt   (false)
 {}
 
+int* Solver::printPS(vec<Lit>& ps,const int size){
+	int *ret=new int[size];
+    for(int i=0;i<ps.size();i++){
+    	ret[i]=toInt(ps[i]);
+    	std::cout<<toInt(ps[i])<<' ';
+    }
+    std::cout<<'\n';
+    return ret;
+}
 
+int* Solver::printWS(int size){
+	printf("**************************printWS Start*************************\n\n");
+	size*=2;
+    //static int *ret=new int[size];
+	int i,j,count=0;
+	for(i=0;i<size;i++)
+	{
+		Lit p;
+		p.x=i;
+		vec<Watcher>&  ws  = watches[p];
+		Watcher *pw;
+		pw = (Watcher*)ws,
+		printf("%s%d%s","ws ",i,":\n");
+		j=0;
+		while(j<ws.size())
+		{
+		//	ret.push(ws[j].blocker.x);
+		//	ret.push(ws[j].cref);
+		//	ret[count]=pw[j].blocker.x;
+		//	ret[count+1]=pw[j].cref;
+			printf("blocker=%d   cref=%d\n",pw[j].blocker.x,pw[j].cref);
+
+			j++,count+=2;
+		}
+	}
+	printf("**************************printWS END*************************\n\n");
+	return NULL;
+}
+
+void Solver::printWSI(int ind){
+	int j,i = ind;
+	Lit p;
+	p.x = i;
+	vec<Watcher>& ws = watches[p];
+	Watcher *pw;
+	pw = (Watcher*) ws;
+	j=0;
+	while (j < ws.size()) {
+		printf("blocker=%d   cref=%d\n", pw[j].blocker.x, pw[j].cref);
+		j++;
+	}
+}
 Solver::~Solver()
 {
 }
@@ -123,20 +176,24 @@ bool Solver::addClause_(vec<Lit>& ps)
     // Check if clause is satisfied and remove false/duplicate literals:
     sort(ps);
     Lit p; int i, j;
+    //j is the number of lits tobe added; If this clause:ps is not satisfied or duplicated,i is supposed to mean size of ps after this loop
     for (i = j = 0, p = lit_Undef; i < ps.size(); i++)
-        if (value(ps[i]) == l_True || ps[i] == ~p)
+    {
+        if (value(ps[i]) == l_True || ps[i] == ~p)//remove satisfied and duplicate(contains both x and ~x) clause
             return true;
-        else if (value(ps[i]) != l_False && ps[i] != p)
+        else if (value(ps[i]) != l_False && ps[i] != p)//when ps[i] is undef and have not appeared anytime,the lit shall be added
             ps[j++] = p = ps[i];
+    }
     ps.shrink(i - j);
 
     if (ps.size() == 0)
         return ok = false;
-    else if (ps.size() == 1){
+    else if (ps.size() == 1){//unit clause have to propagate
         uncheckedEnqueue(ps[0]);
+        //printPS(ps,10);
         return ok = (propagate() == CRef_Undef);
     }else{
-        CRef cr = ca.alloc(ps, false);
+        CRef cr = ca.alloc(ps, false);//each cr is a number telling the address at ca's memory
         clauses.push(cr);
         attachClause(cr);
     }
@@ -144,23 +201,28 @@ bool Solver::addClause_(vec<Lit>& ps)
     return true;
 }
 
-
 void Solver::attachClause(CRef cr) {
     const Clause& c = ca[cr];
     assert(c.size() > 1);
     watches[~c[0]].push(Watcher(cr, c[1]));
     watches[~c[1]].push(Watcher(cr, c[0]));
+    printf("<push watcher>      watcher[%d],blocker=%d,cref=%d\n",~c[0],c[1],cr);
+    printf("<push watcher>      watcher[%d],blocker=%d,cref=%d\n",~c[1],c[0],cr);
     if (c.learnt()) learnts_literals += c.size();
-    else            clauses_literals += c.size(); }
+    else            clauses_literals += c.size();
+}
 
 
 void Solver::detachClause(CRef cr, bool strict) {
+	//printf("<detachClause>      cref=%d\n",cr);
     const Clause& c = ca[cr];
     assert(c.size() > 1);
     
     if (strict){
         remove(watches[~c[0]], Watcher(cr, c[1]));
         remove(watches[~c[1]], Watcher(cr, c[0]));
+        printf("<remove watches[%d]> blocker=%d, cref=%d\n",~c[0].x,c[1].x,cr);
+        printf("<remove watches[%d]> blocker=%d, cref=%d\n",~c[1].x,c[0].x,cr);
     }else{
         // Lazy detaching: (NOTE! Must clean all watcher lists before garbage collecting this clause)
         watches.smudge(~c[0]);
@@ -168,14 +230,17 @@ void Solver::detachClause(CRef cr, bool strict) {
     }
 
     if (c.learnt()) learnts_literals -= c.size();
-    else            clauses_literals -= c.size(); }
+    else            clauses_literals -= c.size();
+}
 
 
 void Solver::removeClause(CRef cr) {
+	printf("<removeClause>      cref=%d\n",cr);
     Clause& c = ca[cr];
     detachClause(cr);
     // Don't leave pointers to free'd memory!
-    if (locked(c)) vardata[var(c[0])].reason = CRef_Undef;
+    if (locked(c))
+    	vardata[var(c[0])].reason = CRef_Undef;
     c.mark(1); 
     ca.free(cr);
 }
@@ -207,7 +272,7 @@ void Solver::cancelUntil(int level) {
 //=================================================================================================
 // Major methods:
 
-
+//获取lit，将堆order_heap根据Activity做排序，每次获取最大activity的lit
 Lit Solver::pickBranchLit()
 {
     Var next = var_Undef;
@@ -225,7 +290,6 @@ Lit Solver::pickBranchLit()
             break;
         }else
             next = order_heap.removeMin();
-
     return next == var_Undef ? lit_Undef : mkLit(next, rnd_pol ? drand(random_seed) < 0.5 : polarity[next]);
 }
 
@@ -249,6 +313,7 @@ Lit Solver::pickBranchLit()
 |________________________________________________________________________________________________@*/
 void Solver::analyze(CRef confl, vec<Lit>& out_learnt, int& out_btlevel)
 {
+
     int pathC = 0;
     Lit p     = lit_Undef;
 
@@ -412,12 +477,15 @@ void Solver::analyzeFinal(Lit p, vec<Lit>& out_conflict)
 }
 
 
+//assign a var undef
 void Solver::uncheckedEnqueue(Lit p, CRef from)
 {
     assert(value(p) == l_Undef);
     assigns[var(p)] = lbool(!sign(p));
     vardata[var(p)] = mkVarData(from, decisionLevel());
     trail.push_(p);
+    printf("<unCKE trail push>  lit.x=%d,  trail.size()=%d\n",
+    		p.x,trail.size(),var(p));
 }
 
 
@@ -434,17 +502,24 @@ void Solver::uncheckedEnqueue(Lit p, CRef from)
 |________________________________________________________________________________________________@*/
 CRef Solver::propagate()
 {
+	printf("\n\n\n<propagate START>   propagations=%d\n",propagations);
+
     CRef    confl     = CRef_Undef;
     int     num_props = 0;
     watches.cleanAll();
-
-    while (qhead < trail.size()){
+    while (qhead < trail.size()){//check every lit in trail
         Lit            p   = trail[qhead++];     // 'p' is enqueued fact to propagate.
+  //      printf("<test qhead>        qhead++,value:%d\n",qhead);
         vec<Watcher>&  ws  = watches[p];
         Watcher        *i, *j, *end;
         num_props++;
 
+        printf("<At watches[%d]>\n",p.x);
+
+        //check each lit's watcher[]
         for (i = j = (Watcher*)ws, end = i + ws.size();  i != end;){
+        	printf("<Check watcher>     blocker=%d   cref=%d\n",i->blocker.x,i->cref);
+
             // Try to avoid inspecting the clause:
             Lit blocker = i->blocker;
             if (value(blocker) == l_True){
@@ -455,28 +530,35 @@ CRef Solver::propagate()
             Clause&  c         = ca[cr];
             Lit      false_lit = ~p;
             if (c[0] == false_lit)
-                c[0] = c[1], c[1] = false_lit;
+                c[0] = c[1], c[1] = false_lit;//means the cref's first lit always be ~p's neighbor,not the lit ~p itself
             assert(c[1] == false_lit);
             i++;
 
             // If 0th watch is true, then clause is already satisfied.
             Lit     first = c[0];
             Watcher w     = Watcher(cr, first);
-            if (first != blocker && value(first) == l_True){
-                *j++ = w; continue; }
+            if (first != blocker && value(first) == l_True)
+            {
+            	printf("<clause satisfied>  c[0] is true,cref=%d satisfied\n",cr);
+                *j++ = w; continue;
+            }
 
             // Look for new watch:
             for (int k = 2; k < c.size(); k++)
-                if (value(c[k]) != l_False){
+                if (value(c[k]) != l_False){//may be l_true
                     c[1] = c[k]; c[k] = false_lit;
                     watches[~c[1]].push(w);
-                    goto NextClause; }
+                    printf("<Push watches[%d]>  blocker=%d  cref=%d, c[1]=%d\n",~c[1],w.blocker.x,w.cref,c[1].x);
+
+                    goto NextClause;
+                }
 
             // Did not find watch -- clause is unit under assignment:
             *j++ = w;
             if (value(first) == l_False){
                 confl = cr;
                 qhead = trail.size();
+                //printf("qhead=trai.size()%d\n",qhead);
                 // Copy the remaining watches:
                 while (i < end)
                     *j++ = *i++;
@@ -487,6 +569,7 @@ CRef Solver::propagate()
         }
         ws.shrink(i - j);
     }
+    printf("<propagate End>     propagations=%d\n",propagations);
     propagations += num_props;
     simpDB_props -= num_props;
 
@@ -533,8 +616,9 @@ void Solver::removeSatisfied(vec<CRef>& cs)
     int i, j;
     for (i = j = 0; i < cs.size(); i++){
         Clause& c = ca[cs[i]];
-        if (satisfied(c))
+        if (satisfied(c)){
             removeClause(cs[i]);
+        }
         else
             cs[j++] = cs[i];
     }
@@ -562,6 +646,7 @@ void Solver::rebuildOrderHeap()
 |________________________________________________________________________________________________@*/
 bool Solver::simplify()
 {
+	printf("simplify()\n");
     assert(decisionLevel() == 0);
 
     if (!ok || propagate() != CRef_Undef)
@@ -576,10 +661,9 @@ bool Solver::simplify()
         removeSatisfied(clauses);
     checkGarbage();
     rebuildOrderHeap();
-
     simpDB_assigns = nAssigns();
     simpDB_props   = clauses_literals + learnts_literals;   // (shouldn't depend on stats really, but it will do for now)
-
+    printf("<simplify() End>    numClause=%d\n",nClauses());
     return true;
 }
 
@@ -597,17 +681,22 @@ bool Solver::simplify()
 |    all variables are decision variables, this means that the clause set is satisfiable. 'l_False'
 |    if the clause set is unsatisfiable. 'l_Undef' if the bound on number of conflicts is reached.
 |________________________________________________________________________________________________@*/
+//nof_conflicts 在之前restart_first设定
 lbool Solver::search(int nof_conflicts)
 {
     assert(ok);
+    printf("<search start>\n");
+    printCA();
     int         backtrack_level;
     int         conflictC = 0;
     vec<Lit>    learnt_clause;
     starts++;
 
     for (;;){
+    	printAssign();
         CRef confl = propagate();
         if (confl != CRef_Undef){
+        	printf("<***CONFLICT***>\n");
             // CONFLICT
             conflicts++; conflictC++;
             if (decisionLevel() == 0) return l_False;
@@ -647,12 +736,15 @@ lbool Solver::search(int nof_conflicts)
                 // Reached bound on number of conflicts:
                 progress_estimate = progressEstimate();
                 cancelUntil(0);
+                    printf("1*************TTTTTTTTTTTTTTest\n");
                 return l_Undef; }
 
             // Simplify the set of problem clauses:
             if (decisionLevel() == 0 && !simplify())
+            {
+            	    printf("2*************TTTTTTTTTTTTTTest\n");
                 return l_False;
-
+            }
             if (learnts.size()-nAssigns() >= max_learnts)
                 // Reduce the set of learnt clauses:
                 reduceDB();
@@ -666,6 +758,7 @@ lbool Solver::search(int nof_conflicts)
                     newDecisionLevel();
                 }else if (value(p) == l_False){
                     analyzeFinal(~p, conflict);
+                        printf("3*************TTTTTTTTTTTTTTest\n");
                     return l_False;
                 }else{
                     next = p;
@@ -679,15 +772,20 @@ lbool Solver::search(int nof_conflicts)
                 next = pickBranchLit();
 
                 if (next == lit_Undef)
+                {
                     // Model found:
+                	    printf("4*************TTTTTTTTTTTTTTest\n");
                     return l_True;
+                }
             }
 
             // Increase decision level and enqueue 'next'
             newDecisionLevel();
             uncheckedEnqueue(next);
+
         }
-    }
+    }//for
+    //simpli ends
 }
 
 
@@ -738,7 +836,8 @@ static double luby(double y, int x){
 // NOTE: assumptions passed in member-variable 'assumptions'.
 lbool Solver::solve_()
 {
-	//test solve github
+	printf("<solve() start>     \n");
+
     model.clear();
     conflict.clear();
     if (!ok) return l_False;
@@ -762,6 +861,7 @@ lbool Solver::solve_()
     while (status == l_Undef){
         double rest_base = luby_restart ? luby(restart_inc, curr_restarts) : pow(restart_inc, curr_restarts);
         status = search(rest_base * restart_first);
+        printf("<search END>\n");
         if (!withinBudget()) break;
         curr_restarts++;
     }
@@ -868,14 +968,18 @@ void Solver::relocAll(ClauseAllocator& to)
     //
     // for (int i = 0; i < watches.size(); i++)
     watches.cleanAll();
+    //根据watches里watcher的cref重新创建一个由在watches里
+    //尚未被满足的clause组成的CA，压缩了cref
     for (int v = 0; v < nVars(); v++)
         for (int s = 0; s < 2; s++){
             Lit p = mkLit(v, s);
             // printf(" >>> RELOCING: %s%d\n", sign(p)?"-":"", var(p)+1);
             vec<Watcher>& ws = watches[p];
             for (int j = 0; j < ws.size(); j++)
+            	//在watches里，相同cref的watcher有且仅有两个，第一遍碰到做标记，第二遍时则更新
                 ca.reloc(ws[j].cref, to);
         }
+    //出循环时已经做完标记了
 
     // All reasons:
     //
@@ -892,7 +996,7 @@ void Solver::relocAll(ClauseAllocator& to)
         ca.reloc(learnts[i], to);
 
     // All original:
-    //
+    //change clauses's cref in CA
     for (int i = 0; i < clauses.size(); i++)
         ca.reloc(clauses[i], to);
 }

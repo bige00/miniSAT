@@ -29,7 +29,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "Dimacs.h"
 #include "Solver.h"
 
-
+#include<iomanip>
+#include <iostream>
 #include <fstream>
 using namespace Minisat;
 
@@ -141,6 +142,7 @@ int main(int argc, char** argv)
         }
         
         parse_DIMACS(in, S);
+        printf("parse_DIMACS() end\n");
         gzclose(in);
 
         FILE* res = (argc >= 3) ? fopen(argv[2], "wb") : NULL;
@@ -174,13 +176,23 @@ int main(int argc, char** argv)
             printf("UNSATISFIABLE\n");
             exit(20);
         }
-        
         vec<Lit> dummy;
         lbool ret = S.solveLimited(dummy);
         if (S.verbosity > 0){
             printStats(S);
             printf("\n"); }
         printf(ret == l_True ? "SATISFIABLE\n" : ret == l_False ? "UNSATISFIABLE\n" : "INDETERMINATE\n");
+
+        //print the result  (the order may be opposite)
+        for(int i=S.model.size();i>=1;i--)
+        	std::cout<<std::setw(5)<<i;
+        std::cout<<'\n';
+        while(S.model.size()>0){
+        	int out=toInt(S.model.last());
+        	std::cout<<std::setw(5)<<out;
+        	S.model.pop();
+        }
+        //printing result ends
         if (res != NULL){
             if (ret == l_True){
                 fprintf(res, "SAT\n");
